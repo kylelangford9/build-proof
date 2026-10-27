@@ -1,0 +1,30 @@
+name: Nightly receipts
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  receipts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the ledger
+        run: |
+          curl -fsS --retry 3 --retry-delay 20 https://www.builderslive.org/api/public/proof-ledger -o receipts.new
+          head -n 1 receipts.new | grep -qx 'sent,company,size_band,recorded,sha256'
+          test "$(wc -l < receipts.new)" -gt 1
+          mv receipts.new receipts.csv
+          sha256sum receipts.csv > receipts.sha256
+      - name: Commit when it changed
+        run: |
+          git config user.name 'Build receipts'
+          git config user.email 'receipts@builderslive.org'
+          git add receipts.csv receipts.sha256
+          if git diff --cached --quiet; then echo 'No new receipts.'; exit 0; fi
+          git commit -m "Receipts $(date -u +%Y-%m-%d): $(($(wc -l < receipts.csv) - 1)) proposals"
+          git push
